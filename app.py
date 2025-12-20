@@ -24,14 +24,6 @@ st.markdown("""
     .main {
         background-color: #f8f9fa;
     }
-    .metric-card {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #4CAF50;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 10px;
-    }
     h1, h2, h3 {
         color: #2c3e50;
         font-family: 'Helvetica Neue', sans-serif;
@@ -40,6 +32,10 @@ st.markdown("""
         width: 100%;
         background-color: #2c3e50;
         color: white;
+    }
+    /* Styling for the table */
+    .stTable {
+        font-size: 1.1rem !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -278,70 +274,22 @@ def main():
                     st.divider()
                     st.subheader("Skeleton & Network Topology")
                     
-                    # Plot Skeleton using Matplotlib for node scatter
-                    fig, ax = plt.subplots(figsize=(10, 8))
-                    ax.imshow(images["Skeleton"], cmap='gray_r')
-                    node_coords = images["Nodes"]
-                    if len(node_coords) > 0:
-                        ax.scatter(node_coords[:, 0], node_coords[:, 1], c='red', s=10, label='Nodes')
-                        ax.legend()
-                    ax.axis('off')
-                    ax.set_title("Medial Axis Transformation (Skeleton)", fontsize=10)
-                    st.pyplot(fig)
+                    # Layout adjustment to center and reduce size of skeleton image
+                    c_left, c_center, c_right = st.columns([1, 2, 1])
+                    with c_center:
+                        # Reduced figsize from (10,8) to (5,4)
+                        fig, ax = plt.subplots(figsize=(5, 4))
+                        ax.imshow(images["Skeleton"], cmap='gray_r')
+                        node_coords = images["Nodes"]
+                        if len(node_coords) > 0:
+                            ax.scatter(node_coords[:, 0], node_coords[:, 1], c='red', s=5, label='Nodes')
+                            ax.legend(fontsize='small')
+                        ax.axis('off')
+                        ax.set_title("Medial Axis Transformation (Skeleton)", fontsize=8)
+                        st.pyplot(fig)
 
                 # TAB 2: METRICS
                 with tab2:
-                    st.markdown("### 📉 Quantitative Analysis Results")
-                    
-                    # Row 1
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Surface Crack Ratio ($R_{{sc}}$)</h4>
-                            <h2>{metrics['R_sc']:.2f} %</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with c2:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Number of Clods ($N_c$)</h4>
-                            <h2>{metrics['N_c']}</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with c3:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Avg. Clod Area ($A_{{av}}$)</h4>
-                            <h2>{metrics['A_av']:.2f} cm²</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    # Row 2
-                    c4, c5, c6 = st.columns(3)
-                    with c4:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Crack Density ($D_c$)</h4>
-                            <h2>{metrics['D_c']:.2f} cm⁻¹</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with c5:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Avg. Width ($W_{{av}}$)</h4>
-                            <h2>{metrics['W_av']:.4f} cm</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with c6:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <h4>Est. Crack Volume</h4>
-                            <h2>{metrics['Volume']:.2f} cm³</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    # Detailed Table
                     st.markdown("#### Complete Geometric Parameters")
                     data = {
                         "Parameter": [
