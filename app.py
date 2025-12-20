@@ -33,7 +33,6 @@ st.markdown("""
         background-color: #2c3e50;
         color: white;
     }
-    /* Styling for the table */
     .stTable {
         font-size: 1.1rem !important;
     }
@@ -192,10 +191,17 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
         "Volume": est_volume_cm3
     }
     
+    # Prepare red overlay for visualization
+    red_mask = np.zeros_like(img_rgb)
+    red_mask[:, :, 0] = 255
+    overlay = cv2.addWeighted(img_rgb, 1.0, 
+                             cv2.bitwise_and(red_mask, red_mask, mask=final_binary_map), 0.6, 0)
+
     images = {
         "Original": img_rgb,
         "Binary Map": final_binary_map,
         "Skeleton": final_skeleton,
+        "Overlay": overlay,
         "Nodes": node_coords
     }
     
@@ -250,42 +256,41 @@ def main():
                 st.success("Analysis Complete")
                 
                 # TAB 1: VISUALIZATION
-                tab1, tab2, tab3 = st.tabs(["📊 Visual Inspection", "📋 Quantitative Metrics", "📑 Definitions"])
+                tab1, tab2, tab3 = st.tabs(["📊 2x2 Visual Grid", "📋 Geometric Metrics", "📑 Definitions"])
                 
                 with tab1:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.subheader("Original Image")
-                        st.image(images["Original"], use_container_width=True)
-                    with col2:
-                        st.subheader("Binary Crack Map")
-                        # Create an overlay for better visualization
-                        original = images["Original"]
-                        mask = images["Binary Map"]
-                        
-                        # Create red overlay
-                        red_mask = np.zeros_like(original)
-                        red_mask[:, :, 0] = 255
-                        overlay = cv2.addWeighted(original, 1.0, 
-                                                 cv2.bitwise_and(red_mask, red_mask, mask=mask), 0.6, 0)
-                        
-                        st.image(overlay, caption=f"Segmentation Overlay (R_sc: {metrics['R_sc']:.2f}%)", use_container_width=True)
+                    # Creating a 2x2 Matplotlib Figure
+                    # figsize=(6, 6) ensures the image size is significantly reduced (compact)
+                    fig, axes = plt.subplots(2, 2, figsize=(6, 6))
                     
-                    st.divider()
-                    st.subheader("Skeleton & Network Topology")
+                    # 1. Original Image
+                    axes[0, 0].imshow(images["Original"])
+                    axes[0, 0].set_title("1. Original Image", fontsize=8)
+                    axes[0, 0].axis('off')
                     
-                    # Layout adjustment to center and reduce size of skeleton image
-                    c_left, c_center, c_right = st.columns([1, 2, 1])
-                    with c_center:
-                        # Reduced figsize from (10,8) to (5,4)
-                        fig, ax = plt.subplots(figsize=(5, 4))
-                        ax.imshow(images["Skeleton"], cmap='gray_r')
-                        node_coords = images["Nodes"]
-                        if len(node_coords) > 0:
-                            ax.scatter(node_coords[:, 0], node_coords[:, 1], c='red', s=5, label='Nodes')
-                            ax.legend(fontsize='small')
-                        ax.axis('off')
-                        ax.set_title("Medial Axis Transformation (Skeleton)", fontsize=8)
+                    # 2. Binary Map (Black & White)
+                    axes[0, 1].imshow(images["Binary Map"], cmap='gray')
+                    axes[0, 1].set_title("2. Binary Crack Map", fontsize=8)
+                    axes[0, 1].axis('off')
+                    
+                    # 3. Skeleton & Nodes
+                    axes[1, 0].imshow(images["Skeleton"], cmap='gray_r')
+                    node_coords = images["Nodes"]
+                    if len(node_coords) > 0:
+                        axes[1, 0].scatter(node_coords[:, 0], node_coords[:, 1], c='red', s=5)
+                    axes[1, 0].set_title("3. Skeleton & Nodes", fontsize=8)
+                    axes[1, 0].axis('off')
+                    
+                    # 4. Overlay (Segmentation)
+                    axes[1, 1].imshow(images["Overlay"])
+                    axes[1, 1].set_title(f"4. Overlay (R_sc={metrics['R_sc']:.1f}%)", fontsize=8)
+                    axes[1, 1].axis('off')
+
+                    plt.tight_layout()
+                    
+                    # Center the figure in Streamlit
+                    col_spacer1, col_fig, col_spacer2 = st.columns([1, 2, 1])
+                    with col_fig:
                         st.pyplot(fig)
 
                 # TAB 2: METRICS
