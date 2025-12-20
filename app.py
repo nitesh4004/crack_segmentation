@@ -5,9 +5,8 @@ import matplotlib.pyplot as plt
 from ultralytics import YOLO
 from skimage.morphology import skeletonize, remove_small_objects, remove_small_holes
 from scipy import ndimage
-import tempfile
 import os
-from PIL import Image
+import gdown
 
 # =============================================================================
 # 1. PAGE CONFIGURATION & STYLING
@@ -46,24 +45,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# 2. HELPER FUNCTIONS
+# 2. SYSTEM CONFIGURATION & MODEL LOADING
 # =============================================================================
 
+# Google Drive File ID for best.pt
+MODEL_ID = '1bQUE7ZL8luHRPWPX9P2u3zdtyAtWbQNP'
+MODEL_URL = f'https://drive.google.com/uc?id={MODEL_ID}'
+MODEL_FILENAME = 'best.pt'
+
 @st.cache_resource
-def load_model(model_file):
+def download_and_load_model():
     """
-    Saves the uploaded stream to a temp file so YOLO can load it.
+    Downloads the YOLO model from Google Drive if not present, then loads it.
+    Uses st.cache_resource to ensure this only happens once.
     """
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pt') as tmp_file:
-        tmp_file.write(model_file.read())
-        tmp_path = tmp_file.name
+    if not os.path.exists(MODEL_FILENAME):
+        with st.spinner("Downloading Model from Drive... (This may take a moment)"):
+            try:
+                gdown.download(MODEL_URL, MODEL_FILENAME, quiet=False)
+            except Exception as e:
+                st.error(f"Failed to download model: {e}")
+                return None
     
     try:
-        model = YOLO(tmp_path)
-        return model, tmp_path
+        model = YOLO(MODEL_FILENAME)
+        return model
     except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None, None
+        st.error(f"Error loading YOLO model: {e}")
+        return None
+
+# =============================================================================
+# 3. ANALYSIS LOGIC
+# =============================================================================
 
 def process_image(image_file, model, px_per_mm, thickness_mm):
     """
@@ -193,7 +206,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
     return metrics, images
 
 # =============================================================================
-# 3. MAIN APPLICATION UI
+# 4. MAIN APPLICATION UI
 # =============================================================================
 
 def main():
@@ -208,11 +221,15 @@ def main():
     # --- SIDEBAR: INPUTS ---
     with st.sidebar:
         st.header("1. Configuration")
-        st.info("Please upload your model and sample image.")
         
-        # Model Uploader
-        model_file = st.file_uploader("Upload YOLO Model (.pt)", type=['pt'])
-        
+        # Load Model Automatically
+        model = download_and_load_model()
+        if model:
+            st.success(f"✅ Model Loaded: {MODEL_FILENAME}")
+        else:
+            st.error("❌ Model Failed to Load")
+            st.stop()
+
         # Image Uploader
         image_file = st.file_uploader("Upload Soil Image", type=['jpg', 'jpeg', 'png'])
         
@@ -226,12 +243,9 @@ def main():
 
     # --- MAIN EXECUTION ---
     if run_btn:
-        if not model_file or not image_file:
-            st.error("Please ensure both the Model (.pt) and an Image file are uploaded.")
+        if not image_file:
+            st.error("Please upload an Image file to proceed.")
         else:
-            with st.spinner("Initializing System & Loading Model..."):
-                model, model_path = load_model(model_file)
-            
             if model:
                 with st.spinner("Processing Crack Network..."):
                     metrics, images = process_image(image_file, model, px_per_mm, thickness_mm)
@@ -371,8 +385,6 @@ def main():
                     * **Average Width of Cracks ($W_{av}$):** Determined by calculating the shortest distance from a randomly chosen point on one boundary to the opposite boundary of the crack segment.
                     * **Estimated Crack Volume ($V_{cr}$):** A derived volumetric estimation calculated as the Crack Area multiplied by the specimen thickness.
                     """)
-
-    # Cleanup handled by tempfile context where possible or OS garbage collection
 
 if __name__ == "__main__":
     main()
