@@ -6,3 +6,4 @@ ultralytics
 scikit-image
 scipy
 pillow
+gdown
