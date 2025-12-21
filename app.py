@@ -214,7 +214,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
 def main():
     st.title("🏗️ Geotechnical Desiccation Crack Analysis")
     st.markdown("""
-    **Developed by:** Amit Kumar  
+    **Developed by:** Nitesh Kumar  
     **Context:** Automated quantification of desiccation crack patterns in clayey soils using image processing techniques 
     as described by *Tang et al. (2012)*.
     """)
