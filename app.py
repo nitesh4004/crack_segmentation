@@ -12,7 +12,7 @@ import gdown
 # 1. PAGE CONFIGURATION & STYLING
 # =============================================================================
 st.set_page_config(
-    page_title="Geotechnical Crack Analysis | Amit Kumar",
+    page_title="Geotechnical Crack Analysis | Nitesh Kumar",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
