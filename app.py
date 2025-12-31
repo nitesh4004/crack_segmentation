@@ -12,7 +12,7 @@ import gdown
 # 1. PAGE CONFIGURATION & STYLING
 # =============================================================================
 st.set_page_config(
-    page_title="Geotechnical Crack Analysis | Amit Kumar",
+    page_title="Geotechnical Crack Analysis | Nitesh Kumar",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -214,7 +214,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
 def main():
     st.title("🏗️ Geotechnical Desiccation Crack Analysis")
     st.markdown("""
-    **Developed by:** Amit Kumar  
+    **Developed by:** Nitesh Kumar  
     **Context:** Automated quantification of desiccation crack patterns in clayey soils using image processing techniques 
     as described by *Tang et al. (2012)*.
     """)
