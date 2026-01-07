@@ -32,6 +32,11 @@ st.markdown("""
         width: 100%;
         background-color: #2c3e50;
         color: white;
+        border-radius: 5px;
+        font-weight: bold;
+    }
+    .stButton>button:hover {
+        background-color: #34495e;
     }
     .stTable {
         font-size: 1.1rem !important;
@@ -73,9 +78,10 @@ def download_and_load_model():
 # 3. ANALYSIS LOGIC
 # =============================================================================
 
-def process_image(image_file, model, px_per_mm, thickness_mm):
+def process_image(image_file, model, px_per_mm, thickness_mm, 
+                 conf_thresh, adaptive_block, adaptive_c, min_noise_area, morph_iter):
     """
-    Executes the full image analysis pipeline (Tang et al., 2012 logic).
+    Executes the full image analysis pipeline with dynamic parameters.
     """
     # Convert uploaded file to numpy array
     file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
@@ -93,8 +99,8 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
     # ---------------------------------------------------------
     # B. Crack Detection (YOLO + Thresholding)
     # ---------------------------------------------------------
-    # 1. YOLO Prediction
-    results = model.predict(img_input, conf=0.05, save=False, verbose=False)
+    # 1. YOLO Prediction (Dynamic Confidence)
+    results = model.predict(img_input, conf=conf_thresh, save=False, verbose=False)
     
     if results[0].masks is None:
         structure_map = np.zeros(gray.shape, dtype=np.uint8)
@@ -105,30 +111,39 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
             m_resized = cv2.resize(m, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_NEAREST)
             structure_map = np.maximum(structure_map, m_resized)
 
-    # 2. Adaptive Thresholding
-    # Smoothing block size optimized for clay textures
+    # 2. Adaptive Thresholding (Dynamic Parameters)
+    # Block size must be odd
+    if adaptive_block % 2 == 0: 
+        adaptive_block += 1
+        
     connectivity_map = cv2.adaptiveThreshold(
         gray_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 85, 15
+        cv2.THRESH_BINARY_INV, adaptive_block, adaptive_c
     )
-    connectivity_clean = remove_small_objects(connectivity_map.astype(bool), min_size=250).astype(np.uint8)
+    
+    # Initial noise removal based on dynamic area
+    connectivity_clean = remove_small_objects(connectivity_map.astype(bool), min_size=min_noise_area).astype(np.uint8)
 
     # ---------------------------------------------------------
     # C. Fusion & Cleaning
     # ---------------------------------------------------------
     combined_map = cv2.bitwise_or(structure_map.astype(np.uint8), connectivity_clean)
     
-    kernel_bridge = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    closed_map = cv2.morphologyEx(combined_map, cv2.MORPH_CLOSE, kernel_bridge, iterations=2)
-    clean_map = remove_small_objects(closed_map.astype(bool), min_size=200).astype(np.uint8)
-    clean_map = remove_small_holes(clean_map.astype(bool), area_threshold=200).astype(np.uint8)
+    # Dynamic Morphology (Closing)
+    kernel_bridge = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    closed_map = cv2.morphologyEx(combined_map, cv2.MORPH_CLOSE, kernel_bridge, iterations=morph_iter)
+    
+    # Secondary cleaning post-fusion
+    clean_map = remove_small_objects(closed_map.astype(bool), min_size=min_noise_area).astype(np.uint8)
+    clean_map = remove_small_holes(clean_map.astype(bool), area_threshold=min_noise_area).astype(np.uint8)
 
     # ---------------------------------------------------------
     # D. Skeletonization
     # ---------------------------------------------------------
     skeleton_base = skeletonize(clean_map)
-    # Dilate to ensure connectivity before final skeletonization
-    kernel_thick = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    
+    # Dilate slightly to ensure connectivity before final skeletonization
+    kernel_thick = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     final_binary_map = cv2.dilate(skeleton_base.astype(np.uint8), kernel_thick, iterations=1)
     final_skeleton = skeletonize(final_binary_map)
 
@@ -140,6 +155,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
 
     # 1. Clod Analysis (N_c, A_av)
     clod_mask = 1 - final_binary_map
+    # Small hole removal for clods
     clod_mask = remove_small_objects(clod_mask.astype(bool), min_size=20).astype(np.uint8)
     num_clods, _ = cv2.connectedComponents(clod_mask)
     num_clods -= 1  # remove background
@@ -153,6 +169,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
     skel_int = final_skeleton.astype(int)
     conv = np.array([[1,1,1],[1,1,1],[1,1,1]])
     neighbor_count = ndimage.convolve(skel_int, conv, mode='constant', cval=0)
+    # Nodes are intersection points (>2 neighbors)
     raw_nodes = (skel_int == 1) & (neighbor_count > 3)
     num_node_clusters, labels, stats, centroids = cv2.connectedComponentsWithStats(raw_nodes.astype(np.uint8))
     real_node_count = num_node_clusters - 1
@@ -162,7 +179,7 @@ def process_image(image_file, model, px_per_mm, thickness_mm):
     # 4. Segment Analysis (N_seg, L_av, D_c)
     skel_segments = skel_int.copy()
     skel_segments[raw_nodes] = 0 
-    valid_segments = remove_small_objects(skel_segments.astype(bool), min_size=8)
+    valid_segments = remove_small_objects(skel_segments.astype(bool), min_size=5)
     num_segments, _ = cv2.connectedComponents(valid_segments.astype(np.uint8))
     num_segments -= 1
     
@@ -241,6 +258,33 @@ def main():
         thickness_mm = st.number_input("Layer Thickness (mm)", min_value=1.0, value=8.0, format="%.1f",
                                       help="Thickness of the soil layer for volume estimation.")
         
+        st.divider()
+        
+        # --- NEW SECTION: ADVANCED PARAMETERS ---
+        st.header("3. Processing Parameters")
+        st.info("Adjust these to manage noise and sensitivity.")
+        
+        with st.expander("🛠️ Advanced Settings", expanded=False):
+            # 1. AI Sensitivity
+            conf_thresh = st.slider("AI Confidence Threshold", 0.01, 0.50, 0.05, 0.01,
+                                   help="Lower values detect more cracks but may include noise. Higher values are stricter.")
+            
+            # 2. Noise Removal
+            min_noise_area = st.slider("Min Particle Size (Noise Filter)", 10, 500, 200, 10,
+                                      help="Removes isolated objects smaller than this pixel area (e.g., sand, dust).")
+            
+            # 3. Texture Sensitivity
+            st.markdown("**Texture Sensitivity (Adaptive Threshold):**")
+            adaptive_block = st.slider("Block Size (Local Area)", 3, 255, 85, 2,
+                                      help="Size of the pixel neighborhood used to calculate threshold. Larger blocks handle shadows better.")
+            adaptive_c = st.slider("Sensitivity Constant (C)", 1, 50, 15, 1,
+                                  help="Higher values reduce noise but may thin out cracks.")
+            
+            # 4. Morphology
+            st.markdown("**Crack Connectivity:**")
+            morph_iter = st.slider("Bridge Gaps (Iterations)", 0, 5, 2, 1,
+                                  help="Number of times to apply 'closing' operation to connect broken crack segments.")
+
         run_btn = st.button("🚀 Run Analysis")
 
     # --- MAIN EXECUTION ---
@@ -250,7 +294,11 @@ def main():
         else:
             if model:
                 with st.spinner("Processing Crack Network..."):
-                    metrics, images = process_image(image_file, model, px_per_mm, thickness_mm)
+                    # Pass new parameters to the processing function
+                    metrics, images = process_image(
+                        image_file, model, px_per_mm, thickness_mm,
+                        conf_thresh, adaptive_block, adaptive_c, min_noise_area, morph_iter
+                    )
                 
                 # --- RESULTS SECTION ---
                 st.success("Analysis Complete")
@@ -260,7 +308,6 @@ def main():
                 
                 with tab1:
                     # Creating a 2x2 Matplotlib Figure
-                    # figsize=(6, 6) ensures the image size is significantly reduced (compact)
                     fig, axes = plt.subplots(2, 2, figsize=(6, 6))
                     
                     # 1. Original Image
